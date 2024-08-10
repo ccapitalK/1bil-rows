@@ -15,11 +15,12 @@ void die(const char *msg) {
 
 const char *filename = "measurements.txt";
 
-struct Context;
-
-void setupContext(struct Context *ctx);
-
-void runTests(void);
+struct Statistics {
+    int64_t min;
+    int64_t max;
+    int64_t sum;
+    size_t n;
+};
 
 struct Context {
     char *data;
@@ -28,13 +29,24 @@ struct Context {
     size_t numLineOffsets;
 };
 
+struct Span {
+    char *start;
+    size_t length;
+};
+
+void setupContext(struct Context *ctx);
+void parseLines(struct Context *ctx);
+
+void runTests(void);
+
 int main() {
-    if (0) {
+    if (1) {
         runTests();
         return 0;
     }
     struct Context ctx;
     setupContext(&ctx);
+    parseLines(&ctx);
 }
 
 static size_t fileLen(FILE *file) {
@@ -52,6 +64,7 @@ void setupContext(struct Context *ctx) {
     ctx->data = malloc(fileLength);
     assert(ctx->data != NULL);
     printf("Allocated\n");
+
     size_t readPos = 0;
     while (readPos < fileLength) {
         int64_t nread = read(fd, ctx->data + readPos, MIN(fileLength - readPos, 1 << 24));
@@ -61,8 +74,28 @@ void setupContext(struct Context *ctx) {
         }
         readPos += nread;
     }
-    printf("Read\n");
     assert(readPos == fileLength);
+    printf("Read\n");
 }
 
-void runTests(void) {}
+void calcTerminate(struct Context *ctx, size_t start, size_t *delimOffset, size_t *lineLength) {
+    *delimOffset = 0;
+    char *data = ctx->data;
+    // while (start < ctx->len && ctx->data[start] != '\0') {
+    //     if ();
+    //     ++start;
+    // }
+}
+
+void parseLines(struct Context *ctx) {
+    size_t offset = 0;
+    while (offset < ctx->len) {
+        size_t delimOffset;
+        size_t lineLength;
+        calcTerminate(ctx, offset, &delimOffset, &lineLength);
+        offset += lineLength + 1;
+    }
+}
+
+void runTests(void) {
+}
