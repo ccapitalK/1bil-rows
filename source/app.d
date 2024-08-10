@@ -5,20 +5,45 @@ import std.format;
 import std.math;
 import std.stdio;
 
-V* setDefault(M, K, V)(M *map, K key, V delegate() def) {
-    V* val = key in *map;
-    if (val == null) {
-        (*map)[key] = def();
-        val = &(*map)[key];
+struct StationName {
+    const ubyte[] data;
+    size_t hash;
+
+    this(const ubyte[] data) {
+        this.data = data;
+        this.hash = calcHash();
     }
-    return val;
+
+    size_t toHash() const nothrow pure => hash;
+
+    size_t calcHash() const nothrow pure {
+        size_t h = 1337;
+        foreach (k; data) {
+            h = 13 * (h ^ k) ^ (37 * (h >> 2));
+        }
+        return h;
+    }
+
+    bool opEquals(ref const StationName other) const nothrow pure {
+        if (other.data.length != data.length || hash != other.hash) {
+            return false;
+        }
+        auto N = data.length;
+        size_t i = 0;
+        while (i < N && data[i] == other.data[i]) {
+            ++i;
+        }
+        return i == N;
+    }
+
+    string toString() const pure => cast(string) data;
 }
 
 struct Stats {
+    long sum = 0;
+    long n = 0;
     int min = int.max;
     int max = int.min;
-    long sum;
-    long n;
 }
 
 struct Fixed10 {
@@ -35,7 +60,7 @@ struct Fixed10 {
 
 class Reader {
     const ubyte[] data;
-    Stats[string] stats;
+    Stats[StationName] stats;
 
     this(const ubyte[] data) {
         this.data = data;
@@ -43,20 +68,24 @@ class Reader {
 
     size_t length() const => data.length;
 
-    Line readLine(size_t *offset) {
+    Line readLine(size_t* offset) {
         import std.conv;
-        Line line;
+
         size_t start = *offset;
         size_t end = start;
         const size_t length = length();
 
-        while (end < length && data[end] != ';') ++end;
+        while (end < length && data[end] != ';') {
+            ++end;
+        }
         enforce(end != length && end > start);
-        line.identifier = cast(string) data[start .. end];
+        StationName identifier = StationName(data[start .. end]);
         ++end;
 
         start = end;
-        while (end < length && data[end] != '\n') ++end;
+        while (end < length && data[end] != '\n') {
+            ++end;
+        }
         enforce(end != length && end > start);
         const ubyte[] tempBytes = data[start .. end];
         int v = 0;
@@ -66,10 +95,10 @@ class Reader {
                 v = 10 * v + c - '0';
             }
         }
-        line.temp = sign ? -v : v;
+        int temp = sign ? -v : v;
 
         *offset = end + 1;
-        return line;
+        return Line(identifier, temp);
     }
 }
 
@@ -80,15 +109,19 @@ Reader makeReader(string filename) {
 }
 
 struct Line {
-    string identifier;
+    StationName identifier;
     int temp;
+    this(StationName identifier, int temp) {
+        this.identifier = identifier;
+        this.temp = temp;
+    }
 }
 
 void readStats(Reader reader) {
     size_t currentOffset = 0;
     while (currentOffset < reader.length) {
         auto line = reader.readLine(&currentOffset);
-        Stats *stats = (&reader.stats).setDefault(line.identifier, () => Stats());
+        Stats* stats = &reader.stats.require(line.identifier, Stats());
         stats.min = min(stats.min, line.temp);
         stats.max = max(stats.max, line.temp);
         stats.sum += line.temp;
@@ -103,7 +136,9 @@ void main(string[] args) {
     readStats(reader);
     writeln("Parsed");
     foreach (s; reader.stats.keys) {
-        Stats *stats = &reader.stats[s];
-        writefln("%s: [%s -> %s] %s", s, Fixed10(stats.min), Fixed10(stats.max), Fixed10(stats.sum / stats.n));
+        Stats* stats = &reader.stats[s];
+        writefln("%s: [%s -> %s] %s", s, Fixed10(stats.min), Fixed10(stats.max), Fixed10(
+                stats.sum / stats.n));
     }
+    writeln(reader.stats.length, " distinct entries");
 }
