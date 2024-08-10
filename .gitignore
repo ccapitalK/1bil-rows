@@ -1,2 +1,5 @@
 main
 measurements.txt
+micro.txt
+perf.data*
+1bil-rows
