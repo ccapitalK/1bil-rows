@@ -6,10 +6,10 @@ import std.math;
 import std.stdio;
 
 struct StationName {
-    const ubyte[] data;
+    const(ubyte)[] data;
     size_t hash;
 
-    this(const ubyte[] data) {
+    this(const(ubyte)[] data) {
         this.data = data;
         this.hash = calcHash();
     }
@@ -36,7 +36,15 @@ struct StationName {
         return i == N;
     }
 
+    int opCmp(ref const StationName other) const => cmp(data, other.data);
+
     string toString() const pure => cast(string) data;
+}
+
+unittest {
+    auto a = StationName([5, 3, 4]);
+    auto b = StationName([3, 4]);
+    assert(a > b);
 }
 
 struct Stats {
@@ -59,10 +67,12 @@ struct Fixed10 {
 }
 
 class Reader {
-    const ubyte[] data;
+    const(ubyte)[] data;
     Stats[StationName] stats;
+    int numThreads;
+    int threadNum;
 
-    this(const ubyte[] data) {
+    this(const(ubyte)[] data) {
         this.data = data;
     }
 
@@ -87,7 +97,7 @@ class Reader {
             ++end;
         }
         enforce(end != length && end > start);
-        const ubyte[] tempBytes = data[start .. end];
+        const(ubyte)[] tempBytes = data[start .. end];
         int v = 0;
         bool sign = tempBytes[0] == '-';
         foreach (c; tempBytes) {
@@ -102,10 +112,16 @@ class Reader {
     }
 }
 
-Reader makeReader(string filename) {
+Reader[] makeReaders(string filename, int numThreads) {
     auto data = cast(ubyte[]) read(filename);
-    auto reader = new Reader(data);
-    return reader;
+    Reader[] readers;
+    foreach (i; 0 .. numThreads) {
+        auto reader = new Reader(data);
+        reader.numThreads = numThreads;
+        reader.threadNum = i;
+        readers ~= reader;
+    }
+    return readers;
 }
 
 struct Line {
@@ -129,16 +145,35 @@ void readStats(Reader reader) {
     }
 }
 
+Stats[StationName] mergeStats(Reader[] readers) {
+    Stats[StationName] stats;
+    foreach (reader; readers) {
+        foreach (ref station; reader.stats.keys) {
+            auto src = &reader.stats[station];
+            Stats* dest = &stats.require(station, Stats());
+            dest.min = min(dest.min, src.min);
+            dest.max = max(dest.max, src.max);
+            dest.sum += src.sum;
+            dest.n += src.n;
+        }
+    }
+    return stats;
+}
+
 void main(string[] args) {
     enforce(args.length >= 2);
-    auto reader = makeReader(args[1]);
+    auto readers = makeReaders(args[1], 2);
     writeln("Read");
-    readStats(reader);
+    readStats(readers[0]);
+    readStats(readers[1]);
     writeln("Parsed");
-    foreach (s; reader.stats.keys) {
-        Stats* stats = &reader.stats[s];
+    auto mergedStats = mergeStats(readers);
+    auto keys = mergedStats.keys.dup;
+    keys.sort();
+    foreach (s; keys) {
+        Stats* stats = &mergedStats[s];
         writefln("%s: [%s -> %s] %s", s, Fixed10(stats.min), Fixed10(stats.max), Fixed10(
                 stats.sum / stats.n));
     }
-    writeln(reader.stats.length, " distinct entries");
+    writeln(mergedStats.length, " distinct entries");
 }
