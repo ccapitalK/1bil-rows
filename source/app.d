@@ -71,23 +71,22 @@ class Reader {
     Stats[StationName] stats;
     int numThreads;
     int threadNum;
+    const size_t length;
 
     this(const(ubyte)[] data) {
         this.data = data;
+        this.length = this.data.length;
     }
 
-    size_t length() const => data.length;
-
-    Line readLine(size_t* offset) {
+    void readLine(size_t* offset, Line *line) {
         size_t start = *offset;
         size_t end = start;
-        const size_t length = length();
 
         while (end < length && data[end] != ';') {
             ++end;
         }
         enforce(end != length && end > start);
-        StationName identifier = StationName(data[start .. end]);
+        line.identifier = StationName(data[start .. end]);
         ++end;
 
         start = end;
@@ -103,10 +102,9 @@ class Reader {
                 v = 10 * v + c - '0';
             }
         }
-        int temp = sign ? -v : v;
+        line.temp = sign ? -v : v;
 
         *offset = end + 1;
-        return Line(identifier, temp);
     }
 }
 
@@ -153,7 +151,8 @@ void readStats(Reader reader) {
         }
         size_t currentOffset = bStart;
         while (currentOffset < bEnd) {
-            auto line = reader.readLine(&currentOffset);
+            Line line;
+            reader.readLine(&currentOffset, &line);
             Stats* stats = &reader.stats.require(line.identifier, Stats());
             stats.min = min(stats.min, line.temp);
             stats.max = max(stats.max, line.temp);
