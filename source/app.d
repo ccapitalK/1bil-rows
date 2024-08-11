@@ -79,8 +79,6 @@ class Reader {
     size_t length() const => data.length;
 
     Line readLine(size_t* offset) {
-        import std.conv;
-
         size_t start = *offset;
         size_t end = start;
         const size_t length = length();
@@ -133,15 +131,35 @@ struct Line {
     }
 }
 
+static const size_t BLOCK_SIZE = 256 * 1024;
+
 void readStats(Reader reader) {
-    size_t currentOffset = 0;
-    while (currentOffset < reader.length) {
-        auto line = reader.readLine(&currentOffset);
-        Stats* stats = &reader.stats.require(line.identifier, Stats());
-        stats.min = min(stats.min, line.temp);
-        stats.max = max(stats.max, line.temp);
-        stats.sum += line.temp;
-        stats.n += 1;
+    size_t numThreads = reader.numThreads;
+    size_t threadNum = reader.threadNum;
+    auto stride = numThreads * BLOCK_SIZE;
+    for (size_t start = threadNum * BLOCK_SIZE; start < reader.length; start += stride) {
+        // block start, end
+        auto bStart = start;
+        size_t bEnd = min(start + BLOCK_SIZE, reader.length);
+        // If it's the first block, we know it's at a boundary. Otherwise find the first line in the block
+        if (bStart > 0) {
+            // If the previous block ended on a newline, we do start on the boundary
+            --bStart;
+            while (bStart < bEnd && reader.data[bStart] != '\n') {
+                ++bStart;
+            }
+            // Advance past the newline
+            ++bStart;
+        }
+        size_t currentOffset = bStart;
+        while (currentOffset < bEnd) {
+            auto line = reader.readLine(&currentOffset);
+            Stats* stats = &reader.stats.require(line.identifier, Stats());
+            stats.min = min(stats.min, line.temp);
+            stats.max = max(stats.max, line.temp);
+            stats.sum += line.temp;
+            stats.n += 1;
+        }
     }
 }
 
@@ -161,11 +179,14 @@ Stats[StationName] mergeStats(Reader[] readers) {
 }
 
 void main(string[] args) {
+    import std.parallelism;
     enforce(args.length >= 2);
-    auto readers = makeReaders(args[1], 2);
+    auto readers = makeReaders(args[1], 8);
     writeln("Read");
-    readStats(readers[0]);
-    readStats(readers[1]);
+    foreach (i, ref reader; taskPool.parallel(readers)) {
+    // foreach (ref reader; readers) {
+        reader.readStats();
+    }
     writeln("Parsed");
     auto mergedStats = mergeStats(readers);
     auto keys = mergedStats.keys.dup;
