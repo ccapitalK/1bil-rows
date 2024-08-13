@@ -108,8 +108,7 @@ class Reader {
     }
 }
 
-Reader[] makeReaders(string filename, int numThreads) {
-    auto data = cast(ubyte[]) read(filename);
+Reader[] makeReaders(const(ubyte)[] data, int numThreads) {
     Reader[] readers;
     foreach (i; 0 .. numThreads) {
         auto reader = new Reader(data);
@@ -178,9 +177,12 @@ Stats[StationName] mergeStats(Reader[] readers) {
 }
 
 void main(string[] args) {
+    import std.mmfile;
     import std.parallelism;
     enforce(args.length >= 2);
-    auto readers = makeReaders(args[1], 8);
+    scope fileData = new MmFile(args[1], MmFile.Mode.read, 0, null, 0);
+    auto data = cast(const(ubyte)[]) fileData[];
+    auto readers = makeReaders(data, 8);
     writeln("Read");
     foreach (i, ref reader; taskPool.parallel(readers)) {
     // foreach (ref reader; readers) {
