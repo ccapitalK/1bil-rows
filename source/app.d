@@ -66,6 +66,45 @@ struct Fixed10 {
     }
 }
 
+void readLine(const(ubyte)[] data, size_t* offset, Line *line) {
+    size_t start = *offset;
+    size_t end = start;
+    size_t length = data.length;
+
+    while (end < length && data[end] != ';') {
+        ++end;
+    }
+    enforce(end != length && end > start);
+    line.identifier = StationName(data[start .. end]);
+    ++end;
+
+    start = end;
+    while (end < length && data[end] != '\n') {
+        ++end;
+    }
+    enforce(end != length && end > start);
+    const(ubyte)[] tempBytes = data[start .. end];
+    int v = 0;
+    bool sign = tempBytes[0] == '-';
+    foreach (c; tempBytes) {
+        if ('0' <= c && c <= '9') {
+            v = 10 * v + c - '0';
+        }
+    }
+    line.temp = sign ? -v : v;
+
+    *offset = end + 1;
+}
+
+unittest {
+    auto s1 = cast(const(ubyte)[]) "aad'hello;12.9\n238";
+    size_t offset = 4;
+    Line line;
+    readLine(s1, &offset, &line);
+    auto expected = StationName(cast(const(ubyte)[]) "hello");
+    assert(line.identifier == expected);
+}
+
 class Reader {
     const(ubyte)[] data;
     Stats[StationName] stats;
@@ -78,34 +117,7 @@ class Reader {
         this.length = this.data.length;
     }
 
-    void readLine(size_t* offset, Line *line) {
-        size_t start = *offset;
-        size_t end = start;
-
-        while (end < length && data[end] != ';') {
-            ++end;
-        }
-        enforce(end != length && end > start);
-        line.identifier = StationName(data[start .. end]);
-        ++end;
-
-        start = end;
-        while (end < length && data[end] != '\n') {
-            ++end;
-        }
-        enforce(end != length && end > start);
-        const(ubyte)[] tempBytes = data[start .. end];
-        int v = 0;
-        bool sign = tempBytes[0] == '-';
-        foreach (c; tempBytes) {
-            if ('0' <= c && c <= '9') {
-                v = 10 * v + c - '0';
-            }
-        }
-        line.temp = sign ? -v : v;
-
-        *offset = end + 1;
-    }
+    void nextLine(size_t* offset, Line *line) => readLine(data, offset, line);
 }
 
 Reader[] makeReaders(const(ubyte)[] data, int numThreads) {
@@ -151,7 +163,7 @@ void readStats(Reader reader) {
         size_t currentOffset = bStart;
         while (currentOffset < bEnd) {
             Line line;
-            reader.readLine(&currentOffset, &line);
+            reader.nextLine(&currentOffset, &line);
             Stats* stats = &reader.stats.require(line.identifier, Stats());
             stats.min = min(stats.min, line.temp);
             stats.max = max(stats.max, line.temp);
