@@ -66,7 +66,7 @@ struct Fixed10 {
     }
 }
 
-void readLine(const(ubyte)[] data, size_t* offset, Line *line) {
+void readLine(const(ubyte)[] data, size_t* offset, Line* line) {
     size_t start = *offset;
     size_t end = start;
     size_t length = data.length;
@@ -117,7 +117,7 @@ class Reader {
         this.length = this.data.length;
     }
 
-    void nextLine(size_t* offset, Line *line) => readLine(data, offset, line);
+    void nextLine(size_t* offset, Line* line) => readLine(data, offset, line);
 }
 
 Reader[] makeReaders(const(ubyte)[] data, int numThreads) {
@@ -191,13 +191,13 @@ Stats[StationName] mergeStats(Reader[] readers) {
 void main(string[] args) {
     import std.mmfile;
     import std.parallelism;
+
     enforce(args.length >= 2);
     scope fileData = new MmFile(args[1], MmFile.Mode.read, 0, null, 0);
     auto data = cast(const(ubyte)[]) fileData[];
     auto readers = makeReaders(data, 8);
     writeln("Read");
     foreach (i, ref reader; taskPool.parallel(readers)) {
-    // foreach (ref reader; readers) {
         reader.readStats();
     }
     writeln("Parsed");
