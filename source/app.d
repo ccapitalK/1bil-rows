@@ -5,7 +5,11 @@ import std.format;
 import std.math;
 import std.stdio;
 
-ulong mask(size_t i) pure => (1UL << (8UL * i)) - 1UL;
+// Mask to accept only the left i bytes of a ulong (little endian). Correct for 1 <= i <= 8
+ulong lmask(size_t i) pure => (1UL << (8UL * i)) - 1UL;
+
+// Mask to accept only the right i bytes of a ulong (little endian). Correct for 0 <= i <= 7
+ulong rmask(size_t i) pure => ~((~0UL) >> (8UL * i));
 
 // unaligned read variant
 size_t rhash1(const(ubyte)[] data) pure {
@@ -17,7 +21,7 @@ size_t rhash1(const(ubyte)[] data) pure {
     while (length > 0) {
         ulong val = addr[offset];
         if (length < 8) {
-            val &= mask(length);
+            val &= lmask(length);
         }
         hash ^= val;
         length -= 8;
@@ -26,27 +30,54 @@ size_t rhash1(const(ubyte)[] data) pure {
     return hash;
 }
 
+ubyte reduceXor(ulong v) {
+    v = (v & 0xffff_ffff) ^ (v >> 32);
+    v = (v & 0xffff) ^ (v >> 16);
+    return cast(ubyte)((v & 0xff) ^ (v >> 8));
+}
+
+// aligned read variant
 size_t rhash2(const(ubyte)[] data) pure {
-    size_t hash = 1337;
     size_t addr = cast(size_t) data.ptr;
     size_t offset = addr & 0x7;
     ulong* alignedStart = cast(ulong*)(addr ^ offset);
-    return hash;
+
+    long toRead = data.length + offset;
+    size_t index = 0;
+    size_t hash = 0;
+    while (toRead > 0) {
+        ulong val = alignedStart[index];
+        if (offset > 0) {
+            val &= rmask(8 - offset);
+        }
+        if (toRead < 8) {
+            val &= lmask(toRead);
+        }
+        toRead -= 8;
+        index += 1;
+        offset = 0;
+    }
+    return hash * 1337 + 13;
 }
 
 size_t rollHash(const(ubyte)[] data) pure => rhash1(data);
 
 unittest {
-    assert(mask(1) == 0xffu);
-    assert(mask(3) == 0xffffffu);
-    assert(mask(7) == 0xffffff_ffffffffu);
+    assert(reduceXor(0xf30031) == reduceXor(0x0130f3));
+    assert(lmask(1) == 0x00ffUL);
+    assert(lmask(3) == 0x00ff_ffffUL);
+    assert(lmask(7) == 0x00ff_ffff_ffff_ffffUL);
+    assert(rmask(0) == 0UL);
+    assert(rmask(1) == 0xff00_0000_0000_0000UL);
+    assert(rmask(2) == 0xffff_0000_0000_0000UL);
+    assert(rmask(7) == 0xffff_ffff_ffff_ff00UL);
     ubyte[] garbage = [29, 38, 10, 44, 210, 48, 22, 6];
     ubyte[] test = [1, 31, 28, 77, 9, 33, 101, 82, 29, 183, 94, 211];
     ubyte[] prefix = [];
     auto base = rollHash(test);
     auto n = test.length;
     foreach (i; 0 .. 16) {
-        prefix ~= cast(ubyte) (i * 13u);
+        prefix ~= cast(ubyte)(i * 13u);
         auto concat = prefix ~ test ~ [cast(ubyte)(i * 19u)] ~ garbage;
         auto inPlace = concat[prefix.length .. (prefix.length + n)];
         assert(rollHash(inPlace) == base);
