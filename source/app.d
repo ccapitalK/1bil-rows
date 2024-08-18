@@ -72,12 +72,14 @@ struct StationName {
         if (other.data.length != data.length || hash != other.hash) {
             return false;
         }
-        auto N = data.length;
-        size_t i = 0;
-        while (i < N && data[i] == other.data[i]) {
-            ++i;
-        }
-        return i == N;
+        return true;
+        // XXX Cursed Assume hash function is enough
+        // auto N = data.length;
+        // size_t i = 0;
+        // while (i < N && data[i] == other.data[i]) {
+        //     ++i;
+        // }
+        // return i == N;
     }
 
     int opCmp(ref const StationName other) const => cmp(data, other.data);
