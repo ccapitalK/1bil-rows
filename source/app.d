@@ -265,6 +265,30 @@ Stats[StationName] mergeStats(Reader[] readers) {
     return stats;
 }
 
+void writeSummary(Stats[StationName] mergedStats) {
+    import std.array;
+
+    auto keys = mergedStats.keys.dup;
+    keys.sort();
+    write("{");
+    bool isFirst = true;
+    foreach (s; keys) {
+        Stats* stats = &mergedStats[s];
+        if (!isFirst) {
+            write(", ");
+        }
+        writef(
+            "%s:%s/%s/%s",
+            s,
+            Fixed10(stats.min),
+            Fixed10(stats.sum / stats.n),
+            Fixed10(stats.max),
+        );
+        isFirst = false;
+    }
+    writeln("}");
+}
+
 void main(string[] args) {
     import std.mmfile;
     import std.parallelism;
@@ -273,18 +297,9 @@ void main(string[] args) {
     scope fileData = new MmFile(args[1], MmFile.Mode.read, 0, null, 0);
     auto data = cast(const(ubyte)[]) fileData[];
     auto readers = makeReaders(data, 8);
-    writeln("Read");
     foreach (i, ref reader; taskPool.parallel(readers)) {
         reader.readStats();
     }
-    writeln("Parsed");
     auto mergedStats = mergeStats(readers);
-    auto keys = mergedStats.keys.dup;
-    keys.sort();
-    foreach (s; keys) {
-        Stats* stats = &mergedStats[s];
-        writefln("%s: [%s -> %s] %s", s, Fixed10(stats.min), Fixed10(stats.max), Fixed10(
-                stats.sum / stats.n));
-    }
-    writeln(mergedStats.length, " distinct entries");
+    mergedStats.writeSummary();
 }
