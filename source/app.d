@@ -281,7 +281,7 @@ void writeSummary(Stats[StationName] mergedStats) {
             "%s:%s/%s/%s",
             s,
             Fixed10(stats.min),
-            Fixed10(stats.sum / stats.n),
+            Fixed10(cast(int) (stats.sum / stats.n)),
             Fixed10(stats.max),
         );
         isFirst = false;
